@@ -22,14 +22,14 @@ print("Null payment_dates (open invoices):", df['payment_date'].isna().sum())
 # ── Sort into 3 buckets ───────────────────────────────────────
 bucket1 = df[
     (df['payment_date'].notna()) & 
-    (df['total_paid'] >= df['invoice_amount'])
+    (df['total_paid'] >= df['invoice_amount']) &
+    (df['status'] == 'paid')
 ].copy()
 
 bucket2 = df[df['payment_date'].isna()].copy()
 
 bucket3 = df[
-    (df['payment_date'].notna()) & 
-    (df['total_paid'] < df['invoice_amount'])
+    df['status'].isin(['partial_settled', 'partial_bad_debt'])
 ].copy()
 
 print("\n── Bucket Summary ──")

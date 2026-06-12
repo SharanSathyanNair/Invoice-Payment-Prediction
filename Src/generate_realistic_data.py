@@ -41,28 +41,22 @@ start_date = pd.Timestamp('2024-01-01')
 end_date = pd.Timestamp('2025-12-31')
 
 for _, customer in customers_df.iterrows():
-    # each customer gets 20-40 invoices over 2 years
     n_invoices = np.random.randint(20, 41)
     
     for _ in range(n_invoices):
-        # random invoice date within 2 years
         days_offset = np.random.randint(0, 730)
         invoice_date = start_date + pd.Timedelta(days=days_offset)
         
-        # payment terms
         terms = np.random.choice([15, 30, 60], p=[0.2, 0.6, 0.2])
         due_date = invoice_date + pd.Timedelta(days=terms)
         
-        # invoice amount based on customer risk profile
         amount = np.random.randint(
             5000 if customer['profile'] == 'risky' else 1000,
             50000
         )
         
-        # compute actual delay
         base_delay = customer['avg_delay']
         
-        # seasonal effect — slow in Dec and Mar
         if invoice_date.month in [12, 3]:
             if customer['profile'] == 'seasonal':
                 base_delay += np.random.randint(5, 12)
@@ -70,16 +64,17 @@ for _, customer in customers_df.iterrows():
         actual_delay = int(np.random.normal(base_delay, customer['std_delay']))
         payment_date = due_date + pd.Timedelta(days=actual_delay)
         
-        # keep payment date after invoice date
         if payment_date <= invoice_date:
             payment_date = invoice_date + pd.Timedelta(days=2)
         
-        # decide if partial payment (15% chance for risky customers)
         is_partial = (
-            customer['profile'] == 'risky' and 
-            np.random.random() < 0.15
+            customer['profile'] in ['risky', 'always_late'] and
+            np.random.random() < 0.20
         )
-        
+
+        # define will_settle before invoices.append
+        will_settle = (np.random.random() < 0.70) if is_partial else False
+
         invoices.append({
             'invoice_id': f'INV-{invoice_id:04d}',
             'customer_id': int(customer['customer_id']),
@@ -87,7 +82,9 @@ for _, customer in customers_df.iterrows():
             'due_date': due_date.date(),
             'invoice_amount': amount,
             'payment_terms_days': terms,
-            'status': 'partial' if is_partial else 'paid'
+            'status': 'partial_settled' if (is_partial and will_settle) 
+                      else 'partial_bad_debt' if is_partial 
+                      else 'paid'
         })
         
         if not is_partial:
@@ -101,9 +98,10 @@ for _, customer in customers_df.iterrows():
             })
             payment_id += 1
         else:
-            # partial payment — only 60% paid, invoice not settled
+            # first partial payment
             partial_amount = int(amount * np.random.uniform(0.3, 0.7))
             partial_date = due_date + pd.Timedelta(days=np.random.randint(5, 20))
+            
             payments.append({
                 'payment_id': f'PAY-{payment_id:04d}',
                 'invoice_id': f'INV-{invoice_id:04d}',
@@ -112,7 +110,21 @@ for _, customer in customers_df.iterrows():
                 'amount': partial_amount
             })
             payment_id += 1
-        
+            
+            # Type A — second payment that fully settles it
+            if will_settle:
+                final_amount = amount - partial_amount
+                final_date = partial_date + pd.Timedelta(
+                    days=np.random.randint(10, 40))
+                payments.append({
+                    'payment_id': f'PAY-{payment_id:04d}',
+                    'invoice_id': f'INV-{invoice_id:04d}',
+                    'customer_id': int(customer['customer_id']),
+                    'payment_date': final_date.date(),
+                    'amount': final_amount
+                })
+                payment_id += 1
+
         invoice_id += 1
 
 invoices_df = pd.DataFrame(invoices)
@@ -122,7 +134,8 @@ payments_df = pd.DataFrame(payments)
 open_invoices = []
 for i in range(50):
     customer = customers_df.sample(1).iloc[0]
-    invoice_date = pd.Timestamp('2026-05-01') + pd.Timedelta(days=np.random.randint(0, 30))
+    invoice_date = pd.Timestamp('2026-05-01') + pd.Timedelta(
+        days=np.random.randint(0, 30))
     terms = np.random.choice([15, 30, 60], p=[0.2, 0.6, 0.2])
     due_date = invoice_date + pd.Timedelta(days=terms)
     amount = np.random.randint(1000, 50000)
@@ -152,4 +165,4 @@ print(customers_df['profile'].value_counts())
 print("\nSample invoices:")
 print(invoices_df.head())
 print("\nSample payments:")
-print(payments_df.head())   
+print(payments_df.head())

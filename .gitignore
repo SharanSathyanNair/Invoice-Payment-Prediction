@@ -6,3 +6,4 @@ models/
 .vscode/
 *.csv
 *.png
+*.pkl
